@@ -1,8 +1,7 @@
 import type { ReactNode } from "react";
 import { Bot, Link2, Loader2, Sparkles } from "lucide-react";
-import { runAgent } from "@/lib/ssc/agents.functions";
 import type { AgentId } from "@/lib/ssc/agents.server";
-import { buildUpstreamContext } from "@/lib/ssc/orchestrator";
+import { buildUpstreamContext, executeAgentRun } from "@/lib/ssc/orchestrator";
 import { useSim } from "@/lib/ssc/store";
 
 export function Card({ title, action, children, className = "" }: { title?: string; action?: ReactNode; children: ReactNode; className?: string }) {
@@ -69,38 +68,15 @@ export function Markdown({ text }: { text: string }) {
   );
 }
 
-export function AgentPanel({ agent, name, context }: { agent: AgentId; name: string; context: unknown }) {
-  const { agentRuns, setAgentRun } = useSim();
+export function AgentPanel({ agent, name }: { agent: AgentId; name: string; context?: unknown }) {
+  const { params, sim, agentRuns, setAgentRun } = useSim();
   const state = agentRuns[agent];
   const upstreamPreview = buildUpstreamContext(agent, agentRuns);
 
   const run = async () => {
-    const started = performance.now();
     setAgentRun(agent, { status: "running" });
-    try {
-      const r = await runAgent({
-        data: {
-          agent,
-          context: JSON.stringify(context),
-          upstreamContext: upstreamPreview,
-        },
-      });
-      if (r.ok) {
-        setAgentRun(agent, {
-          status: "done",
-          text: r.text,
-          at: new Date().toLocaleTimeString(),
-          providerLabel: r.providerLabel,
-          durationMs: Math.round(performance.now() - started),
-          usedUpstream: Boolean(upstreamPreview),
-          stale: false,
-        });
-      } else {
-        setAgentRun(agent, { status: "error", error: r.error });
-      }
-    } catch {
-      setAgentRun(agent, { status: "error", error: "Could not reach the agent. Check your connection and try again." });
-    }
+    const next = await executeAgentRun(agent, params, sim, upstreamPreview);
+    setAgentRun(agent, next);
   };
 
   return (

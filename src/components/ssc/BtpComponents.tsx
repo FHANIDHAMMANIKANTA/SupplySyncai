@@ -15,10 +15,9 @@ import {
   Sparkles,
   UserCheck,
 } from "lucide-react";
-import { runAgent } from "@/lib/ssc/agents.functions";
 import type { AgentId } from "@/lib/ssc/agents.server";
 import { getSapExecutionSteps, SAP_BTP_PRESETS } from "@/lib/ssc/btp";
-import { buildAgentPayload, buildUpstreamContext } from "@/lib/ssc/orchestrator";
+import { buildUpstreamContext, executeAgentRun } from "@/lib/ssc/orchestrator";
 import { fmtINR, fmtN, fmtP, type ScenarioKey } from "@/lib/ssc/model";
 import { useSim, type AgentRunState } from "@/lib/ssc/store";
 import { Card, Chip, Markdown } from "./ui";
@@ -98,40 +97,13 @@ export function MultiAgentOrchestrator() {
     agent: AgentId,
     snapshotRuns: Partial<Record<AgentId, AgentRunState>>,
   ): Promise<AgentRunState> => {
-    const started = performance.now();
     setActiveStep(agent);
     setAgentRun(agent, { status: "running" });
 
-    const payload = buildAgentPayload(agent, params, sim);
     const upstreamContext = buildUpstreamContext(agent, snapshotRuns);
-
-    try {
-      const r = await runAgent({
-        data: {
-          agent,
-          context: JSON.stringify(payload),
-          upstreamContext,
-        },
-      });
-      const next: AgentRunState = r.ok
-        ? {
-            status: "done",
-            text: r.text,
-            at: new Date().toLocaleTimeString(),
-            providerLabel: r.providerLabel,
-            durationMs: Math.round(performance.now() - started),
-            usedUpstream: Boolean(upstreamContext),
-            stale: false,
-          }
-        : { status: "error", error: r.error };
-
-      setAgentRun(agent, next);
-      return next;
-    } catch {
-      const errState: AgentRunState = { status: "error", error: "Network or server error running agent." };
-      setAgentRun(agent, errState);
-      return errState;
-    }
+    const next = await executeAgentRun(agent, params, sim, upstreamContext);
+    setAgentRun(agent, next);
+    return next;
   };
 
   const runAllTogether = async () => {
